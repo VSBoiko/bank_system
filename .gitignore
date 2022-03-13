@@ -129,3 +129,7 @@ dmypy.json
 .pyre/
 
 .idea/
+
+# Pickle`s files
+*.pkl
+*.pikle
