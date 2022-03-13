@@ -1,4 +1,4 @@
-pickle_file = 'bank.pkl'
+pickle_file = 'bank/bank.pkl'
 
 # commands
 deposit_comm = "deposit"
