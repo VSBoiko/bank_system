@@ -1,123 +1,10 @@
+import click
+
 from datetime import datetime
 import pickle
 
-from prettytable import PrettyTable
-import click
-
-from settings import pickle_file
-
-
-class Account:
-    deposit_text = "deposit"
-    withdraw_text = "withdraw"
-    currency_text = "$"
-
-    def __init__(self, client: str):
-        self._client = client
-        self._operation_list = list()
-        self._total_deposit = 0
-        self._total_withdraw = 0
-        self._balance = 0
-
-        self._create_account()
-
-    def get_bank_statement(self, date_from=None, date_to=None):
-        if (date_from is not None) or (date_to is not None):
-            pass
-
-        table = PrettyTable()
-        table.field_names = [
-            "Date",
-            "Description",
-            "Withdrawals",
-            "Deposits",
-            "Balance"
-        ]
-
-        table = self._add_operations_rows(table)
-        table = self._add_total_row(table)
-
-        return table
-
-    def deposit(self, amount: float, description: str = ""):
-        self._total_deposit += amount
-        self._balance += amount
-        self._add_operation(Account.deposit_text, amount, description)
-
-    def withdraw(self, amount: float, description: str = ""):
-        self._total_withdraw += amount
-        self._balance -= amount
-        self._add_operation(Account.withdraw_text, amount, description)
-
-    def get_client(self):
-        return self._client
-
-    def get_operation_list(self):
-        return self._operation_list
-
-    def get_balance(self):
-        return self._balance
-
-    def _add_operation(self, operation: str, amount: float, description: str = ""):
-        new_operation = {
-            "type": operation,
-            "date": datetime.now(),
-            "amount": amount,
-            "description": description,
-            "balance": self._balance,
-        }
-        self._operation_list.append(new_operation)
-
-    def _add_operations_rows(self, table, operations=None):
-        if operations is None:
-            operations = self._operation_list
-
-        for operation in operations:
-            new_row = [
-                operation["date"].strftime("%Y-%m-%d %H:%M:%S"),
-                operation["description"],
-            ]
-
-            str_amount = self._get_monetary_str(operation["amount"])
-            if operation["type"] == Account.withdraw_text:
-                new_row.append(str_amount)
-                new_row.append("")
-            elif operation["type"] == Account.deposit_text:
-                new_row.append("")
-                new_row.append(str_amount)
-            else:
-                new_row.append("")
-                new_row.append("")
-
-            str_balance = self._get_monetary_str(operation["balance"])
-            new_row.append(str_balance)
-
-            table.add_row(new_row)
-            new_row.clear()
-
-        return table
-
-    def _add_total_row(self, table):
-        withdrawals = self._get_monetary_str(self._total_withdraw)
-        deposits = self._get_monetary_str(self._total_deposit)
-        balance = self._get_monetary_str(self.get_balance())
-
-        total_row = [
-            "",
-            "Totals",
-            withdrawals,
-            deposits,
-            balance
-        ]
-        table.add_row(total_row)
-
-        return table
-
-    def _create_account(self):
-        self._add_operation("create_account", 0, "account created")
-
-    def _get_monetary_str(self, amount):
-        return Account.currency_text + str(round(amount, 2))
+import settings
+from Account import Account
 
 
 class Bank:
@@ -150,11 +37,19 @@ class Bank:
     '--description',
     help='description of the operation',
 )
-def main(command, client, amount, description):
+@click.option(
+    '--since',
+    help='from what date to make a bank statement, for example, 2021-01-31 00:00:00',
+)
+@click.option(
+    '--till',
+    help='to what date to make a bank statement, for example, 2021-12-31 00:00:00',
+)
+def main(command, client, amount, description, since, till):
     amount = 0 if amount is None else float(amount)
     description = "" if description is None else str(description)
 
-    with open(pickle_file, 'rb') as f:
+    with open(settings.pickle_file, 'rb') as f:
         bank = pickle.load(f)
 
     if bank.get_account(client):
@@ -163,24 +58,49 @@ def main(command, client, amount, description):
         client_acc = Account(client)
         bank.add_account(client_acc)
 
-    if command == Account.deposit_text:
-        if amount > 0:
-            client_acc.deposit(amount, description)
-            bank.update_account(client, client_acc)
-
-        with open(pickle_file, 'wb') as f:
-            pickle.dump(bank, f)
-    elif command == Account.withdraw_text:
-        if amount > 0:
-            client_acc.withdraw(amount, description)
-            bank.update_account(client, client_acc)
-
-        with open(pickle_file, 'wb') as f:
-            pickle.dump(bank, f)
-    elif command == "show_bank_statement":
-        acc_table = client_acc.get_bank_statement()
-        print(acc_table)
+    if command == settings.deposit_comm:
+        command_deposit(bank, client, client_acc, amount, description)
+    elif command == settings.withdraw_comm:
+        command_withdraw(bank, client, client_acc, amount, description)
+    elif command == settings.show_comm:
+        command_show(client_acc, since, till)
 
 
+def command_deposit(bank, client, client_account, amount, description):
+    if amount > 0:
+        client_account.deposit(amount, description)
+        bank.update_account(client, client_account)
+
+    with open(settings.pickle_file, 'wb') as f:
+        pickle.dump(bank, f)
+
+
+def command_withdraw(bank, client, client_account, amount, description):
+    if amount > 0:
+        client_account.withdraw(amount, description)
+        bank.update_account(client, client_account)
+
+    with open(settings.pickle_file, 'wb') as f:
+        pickle.dump(bank, f)
+
+
+def command_show(client_account, since=None, till=None):
+    if since is None:
+        since_date = None
+    else:
+        since_date = datetime.strptime(since, "%Y-%m-%d %H:%M:%S")
+
+    if till is None:
+        till_date = None
+    else:
+        till_date = datetime.strptime(till, "%Y-%m-%d %H:%M:%S")
+
+    account_table = client_account.get_bank_statement(date_from=since_date, date_to=till_date)
+    print(account_table)
+
+
+# deposit --client="John Jones" --amount=100 --description="ATM Deposit"
+# withdraw --client="John Jones" --amount=100 --description="ATM Withdrawal"
+# show_bank_statement --client="John Jones" --since="2021-01-01 00:00:00" --till="2021-02-01 00:00:00"
 if __name__ == "__main__":
     main()
